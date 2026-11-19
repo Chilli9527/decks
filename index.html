@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 流水線</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:#0B0D10;color:#EEF1EC;overflow:hidden;
+  font-family:"PingFang HK","PingFang TC","Heiti TC","Noto Sans TC",sans-serif}
+
+.shell{display:flex;height:100vh}
+
+/* ── 左邊固定導航 ── */
+#nav{width:274px;flex:0 0 274px;height:100vh;display:flex;flex-direction:column;
+  background:#0E1116;border-right:1px solid rgba(255,255,255,.08);z-index:5;
+  transition:width .26s ease,flex-basis .26s ease,opacity .18s ease}
+body.collapsed #nav{width:0;flex-basis:0;opacity:0;pointer-events:none;border-right-color:transparent;overflow:hidden}
+.brand{padding:22px 20px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+/* 預留左上方空間，避開瀏覽器擴充／浮動面板 */
+@media (min-width:861px){ .brand{padding-top:104px} }
+.brand b{display:block;font-size:19px;font-weight:800;letter-spacing:.02em}
+.brand span{display:block;margin-top:5px;font-size:12px;color:#6F7A86;letter-spacing:.14em}
+/* ── 置頂：公開網址按鈕 ── */
+.pinbtn{display:flex;align-items:center;justify-content:center;gap:8px;
+  margin:12px 10px 0;padding:12px 14px;border-radius:11px;
+  background:linear-gradient(180deg,#FFD24A,#F0B429);border:1px solid #FFE08A;
+  font-family:"PingFang HK","Heiti TC",sans-serif;font-size:13px;font-weight:900;
+  letter-spacing:.04em;color:#1A1206;text-decoration:none;cursor:pointer;
+  box-shadow:0 8px 22px rgba(240,180,41,.28);transition:transform .16s,box-shadow .16s,background .16s}
+.pinbtn:hover{transform:translateY(-1px);box-shadow:0 12px 28px rgba(240,180,41,.36)}
+.pinbtn:active{transform:translateY(0)}
+.pinbtn svg{width:15px;height:15px;flex:0 0 15px}
+.pinurl{margin:7px 10px 4px;text-align:center;font-size:10.5px;letter-spacing:.02em;
+  color:#6F7A86;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#navtoggle,#navopen{position:fixed;top:50%;transform:translateY(-50%);z-index:8;
+  width:30px;height:62px;border-radius:9px;cursor:pointer;
+  background:rgba(22,27,34,.94);border:1px solid rgba(255,255,255,.16);color:#C7D0DA;
+  font-family:inherit;font-size:17px;font-weight:900;line-height:1;backdrop-filter:blur(8px);
+  transition:left .26s ease,opacity .18s ease,background .18s,color .18s}
+#navtoggle{left:278px}
+#navtoggle:hover,#navopen:hover{background:#232B35;color:#fff}
+body.collapsed #navtoggle{opacity:0;pointer-events:none}
+#navopen{left:10px;opacity:0;pointer-events:none}
+body.collapsed #navopen{opacity:1;pointer-events:auto}
+#list{flex:1;overflow-y:auto;padding:10px 10px 20px}
+#list::-webkit-scrollbar{width:8px}
+#list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+
+.item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:transparent;border:0;border-radius:10px;padding:11px 12px;margin-bottom:3px;
+  color:#B9C2CC;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
+  transition:background .18s,color .18s}
+.item:hover{background:rgba(255,255,255,.06);color:#fff}
+.item .dot{width:6px;height:6px;border-radius:50%;background:#3B444F;flex:0 0 6px;transition:background .18s}
+.item .tx{flex:1;min-width:0;overflow:hidden;white-space:normal;line-height:1.24}
+.item .bd{font-size:11px;color:#5F6A76;font-weight:700;letter-spacing:.04em}
+.item.on{background:rgba(255,255,255,.10);color:#fff}
+.item.on .dot{background:#D6F94A}
+.item.on .bd{color:#9AA6B2}
+
+.foot{padding:14px 18px 18px;border-top:1px solid rgba(255,255,255,.07);
+  font-size:11.5px;line-height:1.75;color:#5F6A76}
+.foot kbd{background:rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;font-size:11px}
+
+/* ── 右邊舞台 ── */
+#view{flex:1;position:relative;background:#05070A;min-width:0;
+  display:grid;place-items:center;padding:10px;overflow:hidden}
+#stagebox{position:relative;width:100%;height:100%;max-width:100%;max-height:100%;
+  aspect-ratio:16/9;border-radius:14px;overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.5)}
+#frame{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#05070A}
+
+#fs{position:absolute;right:16px;top:16px;z-index:6;cursor:pointer;
+  background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.8);
+  border-radius:999px;padding:8px 14px;font-family:inherit;font-size:12px;font-weight:800;
+  letter-spacing:.08em;backdrop-filter:blur(8px);transition:background .2s,color .2s}
+#fs:hover{background:rgba(0,0,0,.75);color:#fff}
+
+/* ── 窄屏：導航變頂部橫向 ── */
+@media (max-width:860px){
+  .shell{flex-direction:column}
+  #nav{width:100%;flex:0 0 auto;height:auto;border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}
+  .brand{padding:14px 16px 10px;display:flex;align-items:baseline;gap:10px}
+  .brand b{font-size:16px}.brand span{margin:0}
+  #list{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:4px 10px 10px}
+  .item{flex:0 0 auto;margin:0;white-space:nowrap}
+  .item .tx{white-space:nowrap}
+  .foot{display:none}
+  #view{flex:1}
+  #navtoggle,#navopen{display:none}
+}
+
+/* ── 首頁封面 ── */
+#cover{position:fixed;inset:0;z-index:60;background:#000;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;opacity:1;transition:opacity .45s ease}
+#cover img{width:100%;height:100%;object-fit:contain;display:block}
+#cover .ctip{position:absolute;left:0;right:0;bottom:16px;text-align:center;
+  font-size:12px;letter-spacing:.22em;color:rgba(255,255,255,.45);font-weight:700}
+#cover.gone{opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+
+<div id="cover" role="button" tabindex="0" aria-label="進入 AI 流水線">
+  <img src="assets/ai-production-line-cover.png" alt="AI 流水線 · 你的一人公司軍團出發">
+  <div class="ctip">撳一下 · 進入 AI 流水線</div>
+</div>
+
+<div class="shell">
+  <aside id="nav">
+    <div class="brand"><b>AI 流水線</b><span>9 個 DECK · v13</span></div>
+    <button class="pinbtn" id="pinbtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 13.4a4.2 4.2 0 0 0 5.9 0l3-3a4.2 4.2 0 0 0-5.9-5.9l-1.7 1.7"/><path d="M13.4 10.6a4.2 4.2 0 0 0-5.9 0l-3 3a4.2 4.2 0 0 0 5.9 5.9l1.7-1.7"/></svg>
+      複製分享連結
+    </button>
+    <div class="pinurl">pipeline-ppt.vercel.app</div>
+    <div id="list"></div>
+    <div class="foot">
+      撳一下出一步，出齊再撳一下串成一條流水線。<br>
+      畫面內按 <kbd>H</kbd> 可收埋雜項。
+    </div>
+  </aside>
+  <button id="navtoggle" type="button" title="收埋左欄">‹</button>
+  <button id="navopen" type="button" title="打開左欄">›</button>
+
+  <main id="view">
+    <div id="stagebox"><iframe id="frame" title="流水線簡報"></iframe></div>
+    <button id="fs">⛶ 全螢幕</button>
+  </main>
+</div>
+
+<script>
+const DECKS = [
+  { id:"one-video-pipeline",   name:"一條片出齊所有平台",    steps:8  },
+  { id:"ai-pipeline-flow",     name:"AI 客戶開發",           steps:7  },
+  { id:"material-to-content",  name:"素材變內容",            steps:8  },
+  { id:"replace-paid-tools",   name:"取代付費工具",          steps:8  },
+  { id:"event-pipeline",       name:"活動流水線",            steps:10 },
+  { id:"platform-features",name:"AI 流水線做唔同功能 · 建立你嘅系統", steps:12  },
+  { id:"content-pipeline-text",name:"每日自動搵爆料 · 變你嘅 Post 內容", steps:8  },
+  { id:"youtube-pipeline-flow",name:"AI 幫你營運 YouTube Channel", steps:8  },
+  { id:"one-person-army",       name:"組合不同流水線 · 建立你嘅一人公司軍團", steps:0  },
+];
+
+const PUB = "https://pipeline-ppt.vercel.app/";
+const cover = document.getElementById("cover");
+function enterDeck(){
+  if (cover.classList.contains("gone")) return;
+  cover.classList.add("gone");
+  setTimeout(()=>{ cover.style.display = "none"; }, 460);
+}
+cover.addEventListener("click", e => { e.stopPropagation(); enterDeck(); });
+addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") enterDeck(); });
+
+const NAVKEY = "ppt-nav-collapsed";
+const body = document.body;
+if (localStorage.getItem(NAVKEY) === "1") body.classList.add("collapsed");
+function setNav(collapsed){
+  body.classList.toggle("collapsed", collapsed);
+  try{ localStorage.setItem(NAVKEY, collapsed ? "1" : "0"); }catch(e){}
+}
+document.getElementById("navtoggle").addEventListener("click", e => { e.stopPropagation(); setNav(true); });
+document.getElementById("navopen").addEventListener("click", e => { e.stopPropagation(); setNav(false); });
+const pinbtn = document.getElementById("pinbtn");
+pinbtn.addEventListener("click", () => {
+  const old = pinbtn.innerHTML;
+  let ok = false;
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = PUB; ta.style.position = "fixed"; ta.style.top = "-1000px";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    ok = document.execCommand("copy"); ta.remove();
+  } catch (e) {}
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(PUB).catch(() => {});
+  pinbtn.textContent = ok ? "已複製 ✓ 貼得畀人" : "已複製 ✓";
+  setTimeout(() => { pinbtn.innerHTML = old; }, 1600);
+});
+
+const list = document.getElementById("list");
+const frame = document.getElementById("frame");
+
+DECKS.forEach(d => {
+  const b = document.createElement("button");
+  b.className = "item";
+  b.dataset.id = d.id;
+  b.innerHTML = `<span class="dot"></span><span class="tx">${d.name}</span>` +
+                `<span class="bd">${d.steps ? d.steps + "步" : "分頁"}</span>`;
+  b.addEventListener("click", () => open(d.id, true));
+  list.appendChild(b);
+});
+
+function open(id, push){
+  const d = DECKS.find(x => x.id === id) || DECKS[0];
+  frame.src = "about:blank";
+  requestAnimationFrame(() => { frame.src = d.id + "/"; });
+  [...list.children].forEach(el => el.classList.toggle("on", el.dataset.id === d.id));
+  document.title = d.name + " · AI 流水線";
+  if (push && location.hash.slice(1) !== d.id){
+    history.pushState(null, "", "#" + d.id);
+  }
+  const active = list.querySelector(".item.on");
+  if (active) active.scrollIntoView({ block:"nearest", inline:"nearest" });
+}
+
+addEventListener("hashchange", () => open(location.hash.slice(1) || DECKS[0].id, false));
+document.getElementById("fs").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.getElementById("stagebox").requestFullscreen();
+});
+
+open(location.hash.slice(1) || DECKS[0].id, false);
+</script>
+</body>
+</html>
